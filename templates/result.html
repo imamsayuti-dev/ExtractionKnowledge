@@ -1,236 +1,42 @@
-<!DOCTYPE html>
-<html>
-  <head>
-    <title>Extraction Result</title>
-
-    <link
-      rel="stylesheet"
-      type="text/css"
-      href="{{ url_for('static', filename='css/style.css') }}"
-    />
-    <script>
-      function showNotification(message) {
-        const notification = document.getElementById("notification");
-        notification.innerText = message;
-        notification.style.display = "block";
-        setTimeout(function () {
-          notification.style.display = "none";
-        }, 3000);
-      }
-
-      // Setelah halaman selesai dimuat
-      document.addEventListener("DOMContentLoaded", function () {
-        // Periksa query string untuk notifikasi
-        const urlParams = new URLSearchParams(window.location.search);
-        const notificationMessage = urlParams.get("notification");
-        if (notificationMessage) {
-          showNotification(notificationMessage);
-        }
-      });
-
-      function confirmReset() {
-        // Munculkan kotak dialog konfirmasi
-        const confirmed = confirm("Apakah Anda yakin ingin melakukan reset?");
-
-        // Kembalikan nilai true atau false berdasarkan pilihan pengguna
-        return confirmed;
-      }
-
-      function showTooltip() {
-        const tooltip = document.querySelector(".tooltip");
-        tooltip.classList.add("active");
-      }
-
-      function hideTooltip() {
-        const tooltip = document.querySelector(".tooltip");
-        tooltip.classList.remove("active");
-      }
-
-      function filterTable() {
-        var input = document
-          .getElementById("categoryFilter")
-          .value.toLowerCase();
-        var table = document.getElementById("myTable");
-        var rows = table.getElementsByTagName("tr");
-
-        for (var i = 1; i < rows.length; i++) {
-          var category = rows[i].getElementsByTagName("td")[2];
-          if (category) {
-            var text = category.textContent.toLowerCase();
-            if (text.includes(input)) {
-              rows[i].style.display = "";
-            } else {
-              rows[i].style.display = "none";
-            }
-          }
-        }
-      }
-
-      document.addEventListener("DOMContentLoaded", function () {
-        var inputFilter = document.getElementById("categoryFilter");
-        inputFilter.addEventListener("input", filterTable);
-      });
-    </script>
-  </head>
-  <body>
-    <div class="background"></div>
-    <div class="container">
-      <div class="logo-container">
-        <img
-          class="logo"
-          src="{{ url_for('static', filename='images/logo.png') }}"
-          alt="Logo"
-        />
-      </div>
-      <h1>Extraction Result</h1>
-
-      <div class="tooltip">
-        Menggunakan Natural Language Processing
-        <span
-          class="question-icon"
-          onmouseover="showTooltip()"
-          onmouseout="hideTooltip()"
-          >?</span
-        >
-        <div class="tooltip-text">
-          Natural Language Processing (NLP) atau Pemrosesan Bahasa Alami adalah
-          cabang kecerdasan buatan dan linguistik komputasional yang berfokus
-          pada interaksi antara komputer dan bahasa manusia.
-        </div>
-      </div>
-
-      <div class="table-controls">
-        <div class="filter-container">
-          <input
-            type="text"
-            id="categoryFilter"
-            placeholder="Filter Kategori"
-          />
-        </div>
-        <form action="/reset" method="POST" onsubmit="return confirmReset()">
-          <div class="button-container">
-            <button type="submit">Reset</button>
-          </div>
-        </form>
-      </div>
-
-      <div class="table-container">
-        <table id="myTable">
-          <tr>
-            <th>No.</th>
-            <th>Sentence</th>
-            <th>Category</th>
-            <th>Accuracy</th>
-          </tr>
-          {% for result in extraction_results %}
-          <tr>
-            <td>{{ loop.index }}</td>
-            <td>{{ result['sentence'] }}</td>
-            <td>{{ result['category'] }}</td>
-            <td>{{ result['accuracy'] }}</td>
-          </tr>
-          {% endfor %}
-        </table>
-      </div>
-
-      <div class="pagination">
-        <button id="previousButton">&lt;</button>
-        <span id="currentPage"> </span>
-        <button id="nextButton">&gt;</button>
-      </div>
-
-      <div class="button-container-page2">
-        <a href="/visual">Visual</a>
-        <a href="/">Back</a>
-      </div>
-
-      <div class="developer-info">
-        <p>
-          Dikembangkan oleh
-          <a href="https://github.com/BukanMakmum" target="_blank">
-            Bukan Makmum</a
-          ><span class="tooltip-developer-info">
-            <span
-              class="question-icon"
-              onmouseover="showTooltip(event)"
-              onmouseout="hideTooltip()"
-              ><sup>?</sup></span
-            >
-            <span class="tooltip-text-developer-info">
-              Imam Sayuti<sup>1</sup><br />
-              Yandri Zaita<sup>2</sup>
-            </span>
-          </span>
-          <br />
-          <span style="font-size: 12px; color: #4b4848">
-            Untuk memenuhi Tugas UAS mata kuliah Knowledge Management
-          </span>
-        </p>
-      </div>
-    </div>
-    <div class="notification" id="notification"></div>
-
-    <script>
-      var currentPage = 1;
-      var rowsPerPage = 10; // Jumlah baris per halaman
-
-      var table = document.getElementById("myTable");
-      var tableRows = table.getElementsByTagName("tr");
-      var totalPages = Math.ceil(tableRows.length / rowsPerPage);
-
-      var previousButton = document.getElementById("previousButton");
-      var nextButton = document.getElementById("nextButton");
-      var currentPageElement = document.getElementById("currentPage");
-
-      // Fungsi untuk menampilkan baris yang sesuai dengan halaman saat ini
-      function showTableRows() {
-        var startIndex = (currentPage - 1) * rowsPerPage;
-        var endIndex = startIndex + rowsPerPage;
-
-        for (var i = 0; i < tableRows.length; i++) {
-          if (i >= startIndex && i < endIndex) {
-            tableRows[i].style.display = "";
-          } else {
-            tableRows[i].style.display = "none";
-          }
-        }
-
-        // Memeriksa apakah baris pertama ada di luar jangkauan halaman saat ini
-        if (startIndex > 0) {
-          tableRows[0].style.display = "";
-        }
-      }
-
-      // Fungsi untuk memperbarui tampilan halaman saat ini
-      function updateCurrentPage() {
-        currentPageElement.textContent = " " + currentPage;
-      }
-
-      // Fungsi untuk menangani aksi saat tombol "Sebelumnya" diklik
-      function previousPage() {
-        if (currentPage > 1) {
-          currentPage--;
-          showTableRows();
-          updateCurrentPage();
-        }
-      }
-
-      // Fungsi untuk menangani aksi saat tombol "Berikutnya" diklik
-      function nextPage() {
-        if (currentPage < totalPages) {
-          currentPage++;
-          showTableRows();
-          updateCurrentPage();
-        }
-      }
-
-      // Tambahkan event listener untuk tombol "Sebelumnya" dan "Berikutnya"
-      previousButton.addEventListener("click", previousPage);
-      nextButton.addEventListener("click", nextPage);
-
-      // Inisialisasi tampilan halaman pertama
-      showTableRows();
-      updateCurrentPage();
-    </script>
-  </body>
-</html>
+{% extends 'base.html' %}
+{% block title %}Extraction Result{% endblock %}
+{% block content %}
+<h1>Extraction Result</h1>
+<p>Skor cakupan adalah persentase kata kunci kategori yang cocok, bukan akurasi model. Kata berulang hanya dihitung sekali.</p>
+<div class="table-controls">
+  {% include '_filter.html' %}
+  {% if can_reset %}
+    <form action="{{ url_for('reset') }}" method="post" data-confirm="Hapus seluruh data ekstraksi?">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit">Reset</button>
+    </form>
+  {% endif %}
+</div>
+<p>{{ total }} hasil</p>
+<div class="table-container">
+  <table id="myTable">
+    <thead><tr><th scope="col">No.</th><th scope="col">Kalimat</th><th scope="col">Kategori</th><th scope="col">Cakupan</th></tr></thead>
+    <tbody>
+      {% for result in extraction_results %}
+        <tr>
+          <td>{{ (page - 1) * 10 + loop.index }}</td>
+          <td>{{ result.sentence }}</td>
+          <td>{{ result.category }}</td>
+          <td>{{ '%.1f' | format(result.accuracy * 100) }}%</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="4">Belum ada hasil untuk kategori ini.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<nav class="pagination" aria-label="Halaman hasil">
+  {% if page > 1 %}<a href="{{ url_for('result', page=page-1, category=selected_category) }}">Sebelumnya</a>{% endif %}
+  <span>Halaman {{ page }} dari {{ pages }}</span>
+  {% if page < pages %}<a href="{{ url_for('result', page=page+1, category=selected_category) }}">Berikutnya</a>{% endif %}
+</nav>
+<div class="button-container-page2">
+  <a href="{{ url_for('visual', category=selected_category) }}">Visual</a>
+  <a href="{{ url_for('index') }}">Back</a>
+</div>
+{% endblock %}

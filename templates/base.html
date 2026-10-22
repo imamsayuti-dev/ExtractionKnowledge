@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Extraction Knowledge{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
+  </head>
+  <body>
+    <div class="background"></div>
+    <main class="container">
+      <div class="logo-container">
+        <img class="logo" src="{{ url_for('static', filename='images/logo.png') }}" alt="Logo Extraction Knowledge">
+      </div>
+      {% for message in get_flashed_messages() %}
+        <p class="status-message" role="status">{{ message }}</p>
+      {% endfor %}
+      {% block content %}{% endblock %}
+      <footer class="developer-info">
+        <p>Dikembangkan oleh <a href="https://github.com/BukanMakmum" target="_blank" rel="noopener noreferrer">Bukan Makmum</a>
+          <span class="tooltip-developer-info"><span class="question-icon" tabindex="0">?</span><span class="tooltip-text-developer-info">Imam Sayuti<br>Yandri Zaita</span></span>
+        </p>
+        <p>Mini Project Experiment · Knowledge Management</p>
+      </footer>
+    </main>
+  </body>
+</html>

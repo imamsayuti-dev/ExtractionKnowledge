@@ -606,3 +606,20 @@ p {
 .button-container {
   margin-left: auto;
 }
+
+/* Keep content accessible on short screens and mobile devices. */
+body { overflow: auto; }
+.container { box-sizing: border-box; }
+textarea, select, button { font: inherit; }
+td { overflow-wrap: anywhere; }
+.pagination { gap: 12px; align-items: center; flex-wrap: wrap; }
+.table-controls { flex-wrap: wrap; gap: 12px; }
+.status-message { color: #155724; }
+.tooltip-developer-info:focus-within .tooltip-text-developer-info { visibility: visible; opacity: 1; }
+#chart-container { margin: 24px 0; }
+.chart-row { display: grid; grid-template-columns: minmax(80px, 1fr) 3fr 40px; gap: 12px; margin: 12px 0; align-items: center; }
+.chart-row meter { width: 100%; height: 28px; }
+@media (max-width: 768px) {
+  .container { width: 100%; }
+  .table-container table { min-width: 550px; }
+}

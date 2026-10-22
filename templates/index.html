@@ -1,118 +1,16 @@
-<!DOCTYPE html>
-<html>
-  <head>
-    <title>Extraction Knowledge</title>
-    <link
-      rel="stylesheet"
-      type="text/css"
-      href="{{ url_for('static', filename='css/style.css') }}"
-    />
-    <script>
-      function validateForm(event) {
-        event.preventDefault(); // Mencegah pengiriman formulir
-
-        const textarea = document.querySelector("textarea[name='text']");
-        const inputValue = textarea.value.trim();
-
-        if (inputValue === "") {
-          // Jika input kosong, tampilkan notifikasi
-          showNotification("Input teks tidak boleh kosong");
-        } else {
-          // Jika input tidak kosong, lanjutkan pengiriman formulir
-          event.target.submit();
-        }
-      }
-
-      function showNotification(message) {
-        const notification = document.getElementById("notification");
-        notification.innerText = message;
-        notification.style.display = "block";
-        setTimeout(function () {
-          notification.style.display = "none";
-        }, 3000);
-      }
-    </script>
-    <script>
-      function showHint() {
-        document.getElementById("hintText").style.opacity = "1";
-      }
-
-      function hideHint() {
-        document.getElementById("hintText").style.opacity = "0";
-      }
-    </script>
-    <script>
-      function showTooltip() {
-        const tooltip = document.querySelector(".tooltip");
-        tooltip.classList.add("active");
-      }
-
-      function hideTooltip() {
-        const tooltip = document.querySelector(".tooltip");
-        tooltip.classList.remove("active");
-      }
-    </script>
-  </head>
-  <body>
-    <div class="background"></div>
-    <div class="container">
-      <div class="logo-container">
-        <img
-          class="logo"
-          src="{{ url_for('static', filename='images/logo.png') }}"
-          alt="Logo"
-        />
-      </div>
-      <h1>
-        Extraction <span class="highlight">Knowledge</span> <br /><span
-          style="
-            font-size: 15px;
-            font-family: Arial, sans-serif;
-            font-style: italic;
-          "
-        >
-          Mini Project Experiment</span
-        >
-      </h1>
-      <form action="/result" method="POST" onsubmit="validateForm(event)">
-        <div class="textarea-container">
-          <textarea
-            name="text"
-            id="myTextarea"
-            oninput="checkInput(this)"
-            placeholder="Petunjuk: Ketik Tacit Knowledge yang Anda miliki di sini dalam bahasa Indonesia"
-          ></textarea>
-        </div>
-
-        <div class="button-container-page1">
-          <button type="submit">Proses</button>
-          <a href="/result">Result</a>
-        </div>
-      </form>
-      <div class="developer-info">
-        <p>
-          Dikembangkan oleh
-          <a href="https://github.com/BukanMakmum" target="_blank">
-            Bukan Makmum</a
-          ><span class="tooltip-developer-info">
-            <span
-              class="question-icon"
-              onmouseover="showTooltip(event)"
-              onmouseout="hideTooltip()"
-              ><sup>?</sup></span
-            >
-            <span class="tooltip-text-developer-info">
-              Imam Sayuti<sup>1</sup><br />
-              Yandri Zaita<sup>2</sup>
-            </span>
-          </span>
-          <br />
-          <span style="font-size: 12px; color: #4b4848">
-            Untuk memenuhi Tugas UAS mata kuliah Knowledge Management
-          </span>
-        </p>
-      </div>
-    </div>
-    <div class="notification" id="notification"></div>
-  </body>
-</html>
+{% extends 'base.html' %}
+{% block content %}
+<h1>Extraction <span class="highlight">Knowledge</span></h1>
+<form action="{{ url_for('result') }}" method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label for="myTextarea">Pengetahuan dalam bahasa Indonesia</label>
+  <p>Maksimal 10.000 karakter dan 100 kalimat.</p>
+  <div class="textarea-container">
+    <textarea name="text" id="myTextarea" maxlength="10000" required placeholder="Ketik pengetahuan yang Anda miliki di sini"></textarea>
+  </div>
+  <div class="button-container-page1">
+    <button type="submit">Proses</button>
+    <a href="{{ url_for('result') }}">Result</a>
+  </div>
+</form>
+{% endblock %}

@@ -1,223 +1,250 @@
-from flask import redirect, url_for, Flask, render_template, request
+"""Indonesian keyword extraction with bounded input and protected writes."""
+import os
+import re
+import secrets
+from functools import lru_cache
+from pathlib import Path
+
 import mysql.connector
-from nltk.tokenize import sent_tokenize, word_tokenize
-from nltk.corpus import stopwords
+from flask import (
+    Flask, abort, flash, g, redirect, render_template, request, session, url_for,
+)
+from nltk.tokenize import PunktSentenceTokenizer
 from Sastrawi.Stemmer.StemmerFactory import StemmerFactory
 
+from database import connect_database, transaction
+
 app = Flask(__name__)
-
-# Mengatur koneksi ke database MySQL
-try:
-    db = mysql.connector.connect(
-        host="localhost",
-        user="imam",
-        password="12345",
-        database="uas_km"
-    )
-    print("Connected to database successfully!")
-except mysql.connector.Error as error:
-    print("Failed to connect to database:", error)
-
-# Membaca file keyword_map.txt
-
-
-def read_keyword_map(keyword_map_path):
-    keyword_map = {}
-    with open(keyword_map_path, 'r') as file:
-        lines = file.readlines()
-        for line in lines:
-            line = line.strip()
-            if line:
-                parts = line.split(":")
-                category = parts[0].strip()
-                keywords = [keyword.strip() for keyword in parts[1].split(",")]
-                keyword_map[category] = keywords
-    return keyword_map
+app.config.update(
+    SECRET_KEY=os.environ.get("SECRET_KEY") or secrets.token_hex(32),
+    APP_USERNAME=os.environ.get("APP_USERNAME", "admin"),
+    APP_PASSWORD=os.environ.get("APP_PASSWORD", ""),
+    MAX_CONTENT_LENGTH=128 * 1024,
+    MAX_FORM_MEMORY_SIZE=128 * 1024,
+    MAX_FORM_PARTS=10,
+    MAX_TEXT_LENGTH=10000,
+    MAX_SENTENCES=100,
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Strict",
+    SESSION_COOKIE_SECURE=os.environ.get("COOKIE_SECURE") == "1",
+    TRUSTED_HOSTS=[host.strip() for host in os.environ.get(
+        "TRUSTED_HOSTS", "localhost,127.0.0.1,[::1]"
+    ).split(",") if host.strip()],
+)
 
 
-# Membaca keyword_map.txt saat aplikasi dimulai
-keyword_map_path = "static/data/keyword_map.txt"
-keyword_map = read_keyword_map(keyword_map_path)
-
-# Membuat tabel extracted_knowledge jika belum ada
-
-
-def create_table():
-    cursor = db.cursor()
-    cursor.execute(
-        "CREATE TABLE IF NOT EXISTS extracted_knowledge (category VARCHAR(255), sentence TEXT, accuracy FLOAT)")
-
-
-# Menjalankan fungsi create_table() saat aplikasi dimulai
-create_table()
-
-# Menangani halaman utama
+def read_keyword_map(path):
+    mapping = {}
+    with open(path, encoding="utf-8") as source:
+        for number, line in enumerate(source, 1):
+            if not line.strip() or line.lstrip().startswith("#"):
+                continue
+            category, separator, keywords = line.partition(":")
+            values = [word.strip() for word in keywords.split(",") if word.strip()]
+            if not separator or not category.strip() or not values:
+                raise ValueError(f"Invalid keyword map at line {number}")
+            mapping[category.strip()] = values
+    return mapping
 
 
-@app.route('/')
-def index():
-    return render_template('index.html')
+keyword_map = read_keyword_map(Path(__file__).parent / "static/data/keyword_map.txt")
+# Use our bounded cache instead of Sastrawi's unbounded per-word cache.
+stemmer = StemmerFactory().create_stemmer().delegatedStemmer
+# Untrained Punkt uses punctuation rules without requiring downloaded NLTK data.
+sentence_tokenizer = PunktSentenceTokenizer()
 
 
-# Menangani halaman hasil ekstraksi pengetahuan
-@app.route('/result', methods=['GET', 'POST'])
-def result():
-    if request.method == 'POST':
-        text = request.form['text']
-
-        # Memanggil fungsi untuk ekstraksi pengetahuan
-        extraction_results = extract_knowledge(text)
-
-        # Memasukkan pengetahuan eksplisit ke database dan menghitung akurasi
-        insert_extracted_knowledge(extraction_results)
-
-        # Redirect ke halaman hasil (GET request)
-        return redirect(url_for('result'))
-    else:
-        cursor = db.cursor()
-        cursor.execute("SELECT * FROM extracted_knowledge")
-        extraction_results = [
-            {'category': row[0], 'sentence': row[1], 'accuracy': row[2]} for row in cursor.fetchall()]
-
-        # Mendapatkan kategori yang tersedia dalam tabel
-        cursor.execute("SELECT DISTINCT category FROM extracted_knowledge")
-        categories = [row[0] for row in cursor.fetchall()]
-
-        # Mendapatkan kategori terpilih dari permintaan GET
-        selected_category = request.args.get('category')
-
-        # Mengambil hasil ekstraksi pengetahuan berdasarkan kategori terpilih
-        if selected_category:
-            cursor.execute(
-                "SELECT * FROM extracted_knowledge WHERE category = %s", (selected_category,))
-            extraction_results = [
-                {'category': row[0], 'sentence': row[1], 'accuracy': row[2]} for row in cursor.fetchall()]
-
-        # Menghitung jumlah pengetahuan yang diekstraksi dari setiap kategori
-        knowledge_count = {}
-        for result in extraction_results:
-            category = result['category']
-            if category in knowledge_count:
-                knowledge_count[category] += 1
-            else:
-                knowledge_count[category] = 1
-
-        # Membuat data untuk grafik
-        labels = list(knowledge_count.keys())
-        data = list(knowledge_count.values())
-
-        return render_template('result.html', extraction_results=extraction_results, categories=categories, selected_category=selected_category, labels=labels, data=data)
+@lru_cache(maxsize=8192)
+def stem_word(word):
+    return stemmer.stem(word)
 
 
-# Menangani halaman visualisasi
-@app.route('/visual')
-def visual():
-    cursor = db.cursor()
-    cursor.execute("SELECT * FROM extracted_knowledge")
-    extraction_results = [
-        {'category': row[0], 'sentence': row[1], 'accuracy': row[2]} for row in cursor.fetchall()]
-
-    # Mendapatkan kategori yang tersedia dalam tabel
-    cursor.execute("SELECT DISTINCT category FROM extracted_knowledge")
-    categories = [row[0] for row in cursor.fetchall()]
-
-    # Mendapatkan kategori terpilih dari permintaan GET
-    selected_category = request.args.get('category')
-
-    # Mengambil hasil ekstraksi pengetahuan berdasarkan kategori terpilih
-    if selected_category:
-        cursor.execute(
-            "SELECT * FROM extracted_knowledge WHERE category = %s", (selected_category,))
-        extraction_results = [
-            {'category': row[0], 'sentence': row[1], 'accuracy': row[2]} for row in cursor.fetchall()]
-
-    # Menghitung jumlah pengetahuan yang diekstraksi dari setiap kategori
-    knowledge_count = {}
-    for result in extraction_results:
-        category = result['category']
-        if category in knowledge_count:
-            knowledge_count[category] += 1
-        else:
-            knowledge_count[category] = 1
-
-    # Membuat data untuk grafik
-    labels = list(knowledge_count.keys())
-    data = list(knowledge_count.values())
-
-    return render_template('visual.html', extraction_results=extraction_results, categories=categories, selected_category=selected_category, labels=labels, data=data)
+def normalize(text):
+    # Normalize input and phrases identically; preserve words within phrases.
+    return tuple(stem_word(word) if len(word) <= 64 else word
+                 for word in re.findall(r"[^\W_]+", text.lower()))
 
 
-# Ekstraksi pengetahuan menggunakan pemrosesan bahasa alami (NLP)
+normalized_keywords = {
+    category: frozenset(filter(None, (normalize(word) for word in words)))
+    for category, words in keyword_map.items()
+}
+
+
+def keyword_matches(words, category):
+    words = tuple(words)
+    return {
+        phrase for phrase in normalized_keywords.get(category, ())
+        if any(words[index:index + len(phrase)] == phrase
+               for index in range(len(words) - len(phrase) + 1))
+    }
+
+
+def classify_category(words):
+    counts = {category: len(keyword_matches(words, category))
+              for category in normalized_keywords}
+    best = max(counts, key=counts.get, default="unknown")
+    return best if counts.get(best, 0) else "unknown"
+
+
+def calculate_accuracy(words, category):
+    """Keyword coverage, not statistically measured model accuracy."""
+    total = len(normalized_keywords.get(category, ()))
+    return len(keyword_matches(words, category)) / total if total else 0.0
+
+
 def extract_knowledge(text):
-    sentences = sent_tokenize(text)
-
-    factory = StemmerFactory()
-    stemmer = factory.create_stemmer()
-    stop_words = set(stopwords.words("indonesian"))
-
-    extracted_knowledge = []
-
+    sentences = [sentence.strip() for sentence in sentence_tokenizer.tokenize(text)
+                 if sentence.strip()]
+    if len(sentences) > app.config["MAX_SENTENCES"]:
+        raise ValueError("Maksimal 100 kalimat per permintaan.")
+    results = []
     for sentence in sentences:
-        words = word_tokenize(sentence)
-        filtered_words = [stemmer.stem(word.lower()) for word in words if word.isalnum(
-        ) and word.lower() not in stop_words]
-        category = classify_category(filtered_words)
-        accuracy = calculate_accuracy(filtered_words, category)
-        extracted_knowledge.append({
-            'sentence': sentence,
-            'category': category,
-            'accuracy': accuracy
-        })
-
-    return extracted_knowledge
+        words = normalize(sentence)
+        category = classify_category(words)
+        results.append(dict(sentence=sentence, category=category,
+                            accuracy=calculate_accuracy(words, category)))
+    return results
 
 
-# Klasifikasi kategori ilmu
-def classify_category(extracted_knowledge):
-    category = "unknown"  # Kategori awal
-
-    # Memeriksa setiap kategori dan mencocokkan kata kunci
-    for category_name, keywords in keyword_map.items():
-        if any(keyword in extracted_knowledge for keyword in keywords):
-            category = category_name
-            break
-
-    return category
+def get_db():
+    if "db" not in g:
+        g.db = connect_database()
+    return g.db
 
 
-# Menghitung akurasi berdasarkan kategori yang diklasifikasikan
-def calculate_accuracy(extracted_knowledge, classified_category):
-    reference_keywords = keyword_map.get(classified_category, [])
-    extracted_keywords = [
-        word for word in extracted_knowledge if word in reference_keywords]
-    accuracy = len(extracted_keywords) / \
-        len(reference_keywords) if len(reference_keywords) > 0 else 0
-    return accuracy
+@app.teardown_appcontext
+def close_db(error=None):
+    connection = g.pop("db", None)
+    if connection is not None:
+        connection.close()
 
 
-# Memasukkan pengetahuan eksplisit ke database
-def insert_extracted_knowledge(extraction_results):
-    cursor = db.cursor()
-
-    # Menjalankan perintah SQL untuk memasukkan data ke tabel
-    sql = "INSERT INTO extracted_knowledge (category, sentence, accuracy) VALUES (%s, %s, %s)"
-    values = [(result['category'], result['sentence'], result['accuracy'])
-              for result in extraction_results]
-    cursor.executemany(sql, values)
-
-    # Melakukan commit untuk menyimpan perubahan
-    db.commit()
+def csrf_token():
+    if "csrf_token" not in session:
+        session["csrf_token"] = secrets.token_urlsafe(32)
+    return session["csrf_token"]
 
 
-# Reset database route
-@app.route('/reset', methods=['POST'])
+app.jinja_env.globals["csrf_token"] = csrf_token
+
+
+@app.before_request
+def protect_request():
+    password = app.config["APP_PASSWORD"]
+    if password:
+        auth = request.authorization
+        if not (auth and auth.type.lower() == "basic"
+                and secrets.compare_digest((auth.username or "").encode(),
+                                           app.config["APP_USERNAME"].encode())
+                and secrets.compare_digest((auth.password or "").encode(), password.encode())):
+            return "Autentikasi diperlukan.", 401, {
+                "WWW-Authenticate": 'Basic realm="Extraction Knowledge", charset="UTF-8"'
+            }
+    elif request.remote_addr not in {"127.0.0.1", "::1"}:
+        abort(403, description="Akses jaringan memerlukan APP_PASSWORD.")
+    if request.method == "POST":
+        supplied = request.form.get("csrf_token", "")
+        expected = session.get("csrf_token", "")
+        if not expected or not secrets.compare_digest(supplied.encode(), expected.encode()):
+            abort(400, description="Token formulir tidak valid. Muat ulang halaman.")
+
+
+@app.after_request
+def security_headers(response):
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; script-src 'self'; style-src 'self'; "
+        "img-src 'self'; font-src 'self'; object-src 'none'; "
+        "base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+    )
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "same-origin"
+    if request.endpoint != "static":
+        response.headers["Cache-Control"] = "no-store"
+    if request.is_secure:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000"
+    return response
+
+
+@app.errorhandler(mysql.connector.Error)
+def database_error(error):
+    app.logger.error("Database operation failed (%s)", type(error).__name__)
+    return render_template("error.html", message="Database tidak tersedia. Coba lagi nanti."), 503
+
+
+@app.route("/")
+def index():
+    return render_template("index.html")
+
+
+def insert_extracted_knowledge(results):
+    if results:
+        with transaction(get_db()) as cursor:
+            cursor.executemany(
+                "INSERT INTO extracted_knowledge (category, sentence, accuracy) VALUES (%s, %s, %s)",
+                [(row["category"], row["sentence"], row["accuracy"]) for row in results],
+            )
+
+
+@app.route("/result", methods=["GET", "POST"])
+def result():
+    if request.method == "POST":
+        text = request.form.get("text", "").strip()
+        if not text or len(text) > app.config["MAX_TEXT_LENGTH"]:
+            return render_template("error.html", message="Isi teks antara 1 dan 10.000 karakter."), 400
+        try:
+            results = extract_knowledge(text)
+        except ValueError as error:
+            return render_template("error.html", message=str(error)), 400
+        insert_extracted_knowledge(results)
+        return redirect(url_for("result"), code=303)
+
+    selected_category = request.args.get("category", "")
+    page = max(1, request.args.get("page", 1, type=int))
+    where = " WHERE category = %s" if selected_category else ""
+    params = (selected_category,) if selected_category else ()
+    with transaction(get_db()) as cursor:
+        cursor.execute("SELECT DISTINCT category FROM extracted_knowledge ORDER BY category")
+        categories = [row[0] for row in cursor.fetchall()]
+        cursor.execute("SELECT COUNT(*) FROM extracted_knowledge" + where, params)
+        total = cursor.fetchone()[0]
+        pages = max(1, (total + 9) // 10)
+        page = min(page, pages)
+        # Named columns support both historical schemas (with and without id).
+        cursor.execute(
+            "SELECT category, sentence, accuracy FROM extracted_knowledge" + where
+            + " ORDER BY category, sentence, accuracy LIMIT %s OFFSET %s",
+            params + (10, (page - 1) * 10),
+        )
+        results = [dict(zip(("category", "sentence", "accuracy"), row)) for row in cursor.fetchall()]
+    return render_template("result.html", extraction_results=results, categories=categories,
+                           selected_category=selected_category, page=page, pages=pages,
+                           total=total, can_reset=bool(app.config["APP_PASSWORD"]))
+
+
+@app.route("/visual")
+def visual():
+    selected_category = request.args.get("category", "")
+    with transaction(get_db()) as cursor:
+        cursor.execute("SELECT category, COUNT(*) FROM extracted_knowledge GROUP BY category ORDER BY category")
+        counts = dict(cursor.fetchall())
+    categories = list(counts)
+    if selected_category:
+        counts = {name: count for name, count in counts.items() if name == selected_category}
+    return render_template("visual.html", counts=counts, categories=categories,
+                           selected_category=selected_category, maximum=max(counts.values(), default=1))
+
+
+@app.route("/reset", methods=["POST"])
 def reset():
-    cursor = db.cursor()
-    cursor.execute("DROP TABLE IF EXISTS extracted_knowledge")
-    create_table()
-    return redirect(url_for('result', notification="Database reset successfully!"))
+    if not app.config["APP_PASSWORD"]:
+        abort(403, description="Reset memerlukan autentikasi APP_PASSWORD.")
+    with transaction(get_db()) as cursor:
+        cursor.execute("DELETE FROM extracted_knowledge")
+    flash("Data ekstraksi berhasil dihapus.")
+    return redirect(url_for("result"), code=303)
 
 
-# Menjalankan aplikasi Flask
-if __name__ == '__main__':
-    app.run(debug=True)
+if __name__ == "__main__":
+    app.run(host="127.0.0.1", debug=False)

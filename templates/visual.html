@@ -1,131 +1,18 @@
-<!DOCTYPE html>
-<html>
-  <head>
-    <title>Data Visualization</title>
-    <style>
-      /* CSS untuk mengatur tampilan */
-      .container {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        height: 90vh;
-      }
-    </style>
-    <link
-      rel="stylesheet"
-      type="text/css"
-      href="{{ url_for('static', filename='css/style.css') }}"
-    />
-    <script src="/static/js/plotly-latest.min.js"></script>
-    <script src="/static/js/mermaid.min.js"></script>
-  </head>
-  <body>
-    <div class="background"></div>
-    <div class="container">
-      <div class="logo-container">
-        <img
-          class="logo"
-          src="{{ url_for('static', filename='images/logo.png') }}"
-          alt="Logo"
-        />
-      </div>
-      <h1>Data Visualization</h1>
-      <!-- Konten lainnya -->
-      <div id="chart-container"></div>
-      <script id="extractionData" type="application/json">
-        {{ extraction_results | tojson }}
-      </script>
-      <script>
-        // Mendapatkan data ekstraksi pengetahuan
-        var extractionData = JSON.parse(
-          document.getElementById("extractionData").textContent
-        );
-
-        // Menyiapkan data untuk grafik
-        var categories = [];
-        var counts = [];
-        extractionData.forEach(function (result) {
-          var category = result.category;
-          if (categories.includes(category)) {
-            var index = categories.indexOf(category);
-            counts[index]++;
-          } else {
-            categories.push(category);
-            counts.push(1);
-          }
-        });
-
-        // Menghasilkan warna acak untuk setiap batang
-        var colors = [];
-        for (var i = 0; i < categories.length; i++) {
-          var randomColor =
-            "#" + ((Math.random() * 0xffffff) << 0).toString(16);
-          colors.push(randomColor);
-        }
-
-        // Menggambar grafik dengan warna batang acak
-        var data = [
-          {
-            type: "bar",
-            x: categories,
-            y: counts,
-            marker: {
-              color: colors,
-            },
-          },
-        ];
-        var layout = {
-          title: {
-            text: "Knowledge Extraction",
-            font: {
-              size: 18,
-              color: "royalblue",
-              bold: true,
-            },
-          },
-          xaxis: {
-            title: "Category",
-          },
-          yaxis: {
-            title: "Count",
-          },
-        };
-        Plotly.newPlot("chart-container", data, layout);
-      </script>
-      <!-- Konten lainnya -->
-      <div class="developer-info">
-        <p>
-          Dikembangkan oleh
-          <a href="https://github.com/BukanMakmum" target="_blank">
-            Bukan Makmum</a
-          ><span class="tooltip-developer-info">
-            <span
-              class="question-icon"
-              onmouseover="showTooltip(event)"
-              onmouseout="hideTooltip()"
-              ><sup>?</sup></span
-            >
-            <span class="tooltip-text-developer-info">
-              Imam Sayuti<sup>1</sup><br />
-              Yandri Zaita<sup>2</sup>
-            </span>
-          </span>
-          <br />
-          <span style="font-size: 12px; color: #4b4848">
-            Untuk memenuhi Tugas UAS mata kuliah Knowledge Management
-          </span>
-        </p>
-      </div>
-      <button class="return-button" type="button" onclick="history.back()">
-        Kembali
-      </button>
-      <script>
-        function goBack() {
-          window.history.back();
-        }
-      </script>
+{% extends 'base.html' %}
+{% block title %}Data Visualization{% endblock %}
+{% block content %}
+<h1>Data Visualization</h1>
+{% include '_filter.html' %}
+<div id="chart-container" aria-label="Jumlah hasil ekstraksi per kategori">
+  {% for category, count in counts.items() %}
+    <div class="chart-row">
+      <label for="bar-{{ loop.index }}">{{ category }}</label>
+      <meter id="bar-{{ loop.index }}" min="0" max="{{ maximum }}" value="{{ count }}">{{ count }}</meter>
+      <span>{{ count }}</span>
     </div>
-    <div class="notification" id="notification"></div>
-  </body>
-</html>
+  {% else %}
+    <p>Belum ada hasil untuk kategori ini.</p>
+  {% endfor %}
+</div>
+<div class="button-container-page2"><a href="{{ url_for('result', category=selected_category) }}">Kembali</a></div>
+{% endblock %}
